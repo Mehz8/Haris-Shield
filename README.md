@@ -1,272 +1,316 @@
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import re
-from config import Config
-from api_integrations import check_telecom_database, check_cybercrime_database, submit_fraud_report
-
-# Page configuration
-st.set_page_config(
-    page_title="Haris Shield - AI Fraud Prevention", 
-    page_icon="🛡️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS
-st.markdown(f"""
-<style>
-    .main-header {{
-        font-size: 3rem;
-        color: #1f77b4;
-        text-align: center;
-        margin-bottom: 1rem;
-    }}
-    .sub-header {{
-        font-size: 1.5rem;
-        color: #0068c9;
-        text-align: center;
-        margin-bottom: 2rem;
-    }}
-    .risk-high {{
-        background-color: #ff4b4b;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-    }}
-    .risk-medium {{
-        background-color: #ffa500;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-    }}
-    .risk-low {{
-        background-color: #00cc00;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-    }}
-    .search-box {{
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 10px;
-        margin-bottom: 20px;
-        border-left: 4px solid #1f77b4;
-    }}
-    .example-text {{
-        font-size: 0.9rem;
-        color: #6c757d;
-        font-style: italic;
-    }}
-</style>
-""", unsafe_allow_html=True)
-
-# App title and description
-st.markdown(f'<h1 class="main-header">🛡️ {Config.APP_NAME}</h1>', unsafe_allow_html=True)
-st.markdown('<h2 class="sub-header">AI-Powered Fraud Detection Platform</h2>', unsafe_allow_html=True)
-
-# Initialize session state
-if 'search_history' not in st.session_state:
-    st.session_state.search_history = []
-if 'reports' not in st.session_state:
-    st.session_state.reports = []
-
-# Enhanced AI analysis function
-def enhanced_ai_analysis(query):
-    # Determine query type
-    query_type = "unknown"
-    if re.match(r'^\+?[0-9]{10,12}$', query.replace(" ", "")):
-        query_type = "phone"
-    elif re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', query):
-        query_type = "email"
-    elif re.match(r'^(https?://)?(www\.)?[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', query):
-        query_type = "url"
-    elif re.match(r'^[a-zA-Z\s]{3,}$', query):
-        query_type = "entity"
-    
-    # Initialize results
-    results = {
-        "query": query,
-        "type": query_type,
-        "risk_score": 0,
-        "risk_level": "Low",
-        "details": {},
-        "sources_checked": []
-    }
-    
-    # Check telecom database for phone numbers
-    if query_type == "phone":
-        results["sources_checked"].append("Telecom Database")
-        telecom_result = check_telecom_database(query)
-        results["details"]["telecom_db"] = telecom_result
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streamlit Deployment Guide</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
         
-        if telecom_result.get("risk_level") == "High":
-            results["risk_score"] = 85
-        elif telecom_result.get("risk_level") == "Medium":
-            results["risk_score"] = 60
-        else:
-            results["risk_score"] = 20
-    
-    # Check cybercrime database
-    results["sources_checked"].append("Cybercrime Database")
-    cybercrime_result = check_cybercrime_database(query, query_type)
-    if cybercrime_result:
-        results["details"]["cybercrime_db"] = cybercrime_result
-        results["risk_score"] = max(results["risk_score"], 75)
-    
-    # Pattern analysis
-    suspicious_keywords = [
-        'free', 'win', 'prize', 'urgent', 'password', 'verify', 'account', 
-        'bank', 'pay', 'security', 'investment', 'crypto', 'loan', 'offer',
-        'discount', 'limited', 'secure', 'kyc', 'reward', 'lottery', 'jackpot',
-        'selected', 'winner', 'claim', 'immediate', 'bitcoin', 'ethereum',
-        'stock', 'trading', 'profit', 'return', 'scheme', 'opportunity', 'bonus'
-    ]
-    
-    keyword_count = sum(1 for word in suspicious_keywords if word in query.lower())
-    results["details"]["suspicious_keywords"] = keyword_count
-    results["risk_score"] = min(100, results["risk_score"] + (keyword_count * 5))
-    
-    # Determine risk level
-    if results["risk_score"] >= 80:
-        results["risk_level"] = "High"
-    elif results["risk_score"] >= 50:
-        results["risk_level"] = "Medium"
-    else:
-        results["risk_level"] = "Low"
-    
-    return results
-
-# Main search interface - Single dialog box
-st.markdown("""
-<div class="search-box">
-    <h3>🔍 AI Fraud Detection Search</h3>
-    <p class="example-text">Examples: "Quick Gain Investments", "+918888555555", "crypto-profit.com", "investment@secure-kyc.com"</p>
-</div>
-""", unsafe_allow_html=True)
-
-# Single search input with examples
-search_query = st.text_input(
-    "**Enter phone number, email, website, or company name to verify:**",
-    placeholder="e.g., Quick Gain Investments, +91XXXXXXXXXX, example@email.com, companyname.com",
-    key="search_input",
-    help="Enter any suspicious contact details, investment offers, or websites to check for fraud risks"
-)
-
-analyze_button = st.button("🚀 Analyze with AI", type="primary")
-
-# Analysis results
-if analyze_button and search_query:
-    st.session_state.search_history.append({
-        "query": search_query,
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    })
-    
-    with st.spinner("🛡️ AI is analyzing across multiple databases..."):
-        # Enhanced AI Analysis
-        ai_result = enhanced_ai_analysis(search_query)
+        body {
+            background: linear-gradient(135deg, #0e1117 0%, #1a1f2e 100%);
+            color: #f0f2f6;
+            line-height: 1.6;
+            padding: 20px;
+        }
         
-        # Display results
-        st.markdown("---")
-        st.markdown("## 📋 AI Analysis Results")
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: rgba(24, 28, 39, 0.9);
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+        }
         
-        result_col1, result_col2 = st.columns(2)
+        header {
+            background: linear-gradient(90deg, #ff4b4b 0%, #ff7c7c 100%);
+            padding: 30px 20px;
+            text-align: center;
+        }
         
-        with result_col1:
-            st.markdown("### 🔍 Analysis Details")
-            st.write(f"**Input Type:** {ai_result['type'].title()}")
-            st.write(f"**Risk Score:** {ai_result['risk_score']}/100")
-            
-            risk_class = f"risk-{ai_result['risk_level'].lower()}"
-            st.markdown(f"**Risk Level:** <span class='{risk_class}'>{ai_result['risk_level']}</span>", unsafe_allow_html=True)
-            
-            st.write(f"**Sources Checked:** {', '.join(ai_result['sources_checked'])}")
-            
-            # Display specific database matches
-            if "telecom_db" in ai_result["details"]:
-                telecom_data = ai_result["details"]["telecom_db"]
-                if telecom_data.get("risk_level") != "Low":
-                    risk_icon = "❌" if telecom_data.get("risk_level") == "High" else "⚠️"
-                    st.error(f"**{risk_icon} Telecom Database Match:** {telecom_data.get('risk_level', 'Unknown')} Risk")
-            
-            if "cybercrime_db" in ai_result["details"]:
-                cyber_data = ai_result["details"]["cybercrime_db"]
-                risk_icon = "❌" if cyber_data.get('reports', 0) > 10 else "⚠️"
-                st.error(f"**{risk_icon} Cybercrime Database Match:** {cyber_data.get('type', 'Unknown')}")
-            
-            if "suspicious_keywords" in ai_result["details"]:
-                st.warning(f"**Suspicious Patterns Detected:** {ai_result['details']['suspicious_keywords']} suspicious elements found")
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
         
-        with result_col2:
-            st.markdown("### 🛡️ Recommendations")
-            
-            if ai_result['risk_level'] == "High":
-                st.error("**Immediate Action Required:**")
-                st.write("🚨 This entity shows characteristics of known fraud patterns")
-                st.write("🚨 Do not engage or share any personal information")
-                st.write("📞 Immediately contact your bank if already engaged")
-                st.write("📋 Report to cybercrime authorities")
-                st.write("📵 Block all communications from this entity")
-                
-            elif ai_result['risk_level'] == "Medium":
-                st.warning("**Exercise Extreme Caution:**")
-                st.write("⚠️ This entity shows suspicious characteristics")
-                st.write("⚠️ Verify through official channels before proceeding")
-                st.write("🔍 Research the entity thoroughly online")
-                st.write("📞 Contact through official verified channels only")
-                st.write("📝 Check for reviews or complaints from other users")
-                
-            else:
-                st.success("**No High-Risk Indicators Found:**")
-                st.write("✅ No matches in fraud databases")
-                st.write("🔍 Continue with standard precautions")
-                st.write("📱 Verify through official sources when in doubt")
-                st.write("📝 Report any suspicious activity")
-
-# Report fraud section
-st.markdown("---")
-st.markdown("## 📝 Report Suspected Fraud")
-
-with st.form("fraud_report_form"):
-    st.write("Help protect others by reporting suspected fraud attempts")
-    
-    report_type = st.selectbox(
-        "Type of Fraud:",
-        ["Investment Scam", "Phishing", "UPI Fraud", "Fake Job Offer", "Loan Fraud", "Other"]
-    )
-    
-    fraud_details = st.text_area("Details of the fraud attempt:", height=100,
-                                placeholder="Please provide specific details about what happened...")
-    
-    contact_info = st.text_input("Your Contact Information (optional):",
-                                placeholder="Email or phone for follow-up if needed")
-    
-    submitted = st.form_submit_button("Submit Report")
-    
-    if submitted:
-        if fraud_details:
-            report_data = {
-                "type": report_type,
-                "details": fraud_details,
-                "contact": contact_info,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .card {
+            background: rgba(38, 43, 58, 0.6);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 25px;
+            border-left: 4px solid #ff4b4b;
+        }
+        
+        h2 {
+            color: #ff7c7c;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        
+        h2 i {
+            margin-right: 10px;
+        }
+        
+        p {
+            margin-bottom: 15px;
+        }
+        
+        ul, ol {
+            margin-left: 20px;
+            margin-bottom: 20px;
+        }
+        
+        li {
+            margin-bottom: 10px;
+        }
+        
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+        
+        pre {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 15px;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            line-height: 1.4;
+        }
+        
+        .note {
+            background: rgba(255, 215, 0, 0.1);
+            border-left: 4px solid gold;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .troubleshooting {
+            background: rgba(255, 75, 75, 0.1);
+            border-left: 4px solid #ff4b4b;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .success {
+            background: rgba(75, 255, 100, 0.1);
+            border-left: 4px solid #4bff64;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        
+        .platforms {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .platform {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(38, 43, 58, 0.8);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        
+        .platform h3 {
+            color: #ff7c7c;
+            margin-bottom: 10px;
+        }
+        
+        footer {
+            text-align: center;
+            padding: 20px;
+            background: rgba(24, 28, 39, 1);
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        @media (max-width: 768px) {
+            .platforms {
+                flex-direction: column;
             }
             
-            # Submit report
-            report_result = submit_fraud_report(report_data)
-            if report_result.get("status") == "success":
-                st.session_state.reports.append(report_data)
-                st.success(f"Thank you! Your report has been submitted.")
-            else:
-                st.error("Failed to submit report. Please try again.")
-        else:
-            st.warning("Please provide details about the fraud attempt")
+            h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Streamlit App Deployment Guide</h1>
+            <p class="subtitle">Step-by-step instructions to deploy your Streamlit application</p>
+        </header>
+        
+        <div class="content">
+            <div class="card">
+                <h2>Understanding the Problem</h2>
+                <p>When you see a "file not found" error with Streamlit, it's typically because:</p>
+                <ul>
+                    <li>Your app is looking for a file in the wrong location</li>
+                    <li>The working directory is different than expected</li>
+                    <li>File paths are hardcoded and don't work in deployment</li>
+                    <li>Required files aren't included in your deployment</li>
+                </ul>
+            </div>
+            
+            <div class="card">
+                <h2>Step 1: Fix File Path Issues</h2>
+                <p>Always use relative paths and the <code>__file__</code> attribute to construct paths correctly:</p>
+                <pre>
+import os
+import streamlit as st
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div style='text-align: center; color: gray;'>
-    <p>🛡️ Haris Shield - AI-Powered Fraud Prevention Platform</p>
-</div>
-""", unsafe_allow_html=True)# Haris-Shield
-AI-Powered Fraud Detection Platform
+# Get the directory of the current script
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Construct absolute path to your data file
+data_path = os.path.join(script_dir, 'data', 'your_data.csv')
+
+# Use this path to load your data
+try:
+    df = pd.read_csv(data_path)
+    st.write("Data loaded successfully!")
+except FileNotFoundError:
+    st.error("Data file not found. Please check the file path.")
+                </pre>
+                <div class="note">
+                    <p><strong>Note:</strong> Avoid hardcoding absolute paths like <code>C:/Users/Name/Project/data.csv</code> as these won't work when deployed.</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Step 2: Prepare Your App for Deployment</h2>
+                <p>Before deploying, make sure your project is well-organized:</p>
+                <ol>
+                    <li>Place all required data files in a folder within your project</li>
+                    <li>Create a <code>requirements.txt</code> file with all dependencies</li>
+                    <li>Test your app locally to ensure it works with relative paths</li>
+                    <li>Make sure you're not using any localhost/127.0.0.1 references</li>
+                </ol>
+                
+                <p>Example requirements.txt:</p>
+                <pre>
+streamlit==1.22.0
+pandas==1.5.3
+numpy==1.24.3
+plotly==5.13.1
+                </pre>
+            </div>
+            
+            <div class="card">
+                <h2>Step 3: Choose a Deployment Platform</h2>
+                <p>Streamlit apps can be deployed on several platforms:</p>
+                
+                <div class="platforms">
+                    <div class="platform">
+                        <h3>Streamlit Community Cloud</h3>
+                        <p>Official hosting by Streamlit</p>
+                        <p>Free for public apps</p>
+                    </div>
+                    
+                    <div class="platform">
+                        <h3>Heroku</h3>
+                        <p>Platform as a Service</p>
+                        <p>Free tier available</p>
+                    </div>
+                    
+                    <div class="platform">
+                        <h3>AWS/Azure/GCP</h3>
+                        <p>Cloud providers</p>
+                        <p>More configuration needed</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Step 4: Deploy to Streamlit Community Cloud</h2>
+                <ol>
+                    <li>Push your code to a GitHub repository</li>
+                    <li>Go to <a href="https://share.streamlit.io/" style="color: #ff7c7c;">share.streamlit.io</a></li>
+                    <li>Sign in with your GitHub account</li>
+                    <li>Click "New app" and select your repository, branch, and main file</li>
+                    <li>Advanced settings: Add your Python version if needed</li>
+                    <li>Click "Deploy" and wait for the process to complete</li>
+                </ol>
+                
+                <div class="success">
+                    <p><strong>Success:</strong> Your app will be available at <code>https://your-app-name.streamlit.app</code></p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Troubleshooting Common Issues</h2>
+                <div class="troubleshooting">
+                    <p><strong>ModuleNotFoundError:</strong> Add missing packages to your requirements.txt</p>
+                    <p><strong>FileNotFoundError:</strong> Use the path construction method shown in Step 1</p>
+                    <p><strong>App crashes on launch:</strong> Check your requirements.txt for version conflicts</p>
+                    <p><strong>App deploys but shows error:</strong> Check the logs in your deployment platform</p>
+                </div>
+                
+                <p>For advanced debugging, you can add debug information to your app:</p>
+                <pre>
+import os
+st.sidebar.write("Current working directory:", os.getcwd())
+st.sidebar.write("Files in directory:", os.listdir())
+# Remember to remove these after debugging
+                </pre>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Need more help? Check out the <a href="https://docs.streamlit.io/" style="color: #ff7c7c;">Streamlit Documentation</a></p>
+            <p>© 2023 Streamlit Deployment Guide</p>
+        </footer>
+    </div>
+
+    <script>
+        // Simple text animation for headers
+        document.addEventListener('DOMContentLoaded', function() {
+            const headers = document.querySelectorAll('h2');
+            headers.forEach(header => {
+                header.innerHTML = '<i>▶</i> ' + header.textContent;
+                header.addEventListener('click', function() {
+                    const content = this.nextElementSibling;
+                    while(content && content.classList && !content.classList.contains('card')) {
+                        if (content.style.display === 'none') {
+                            content.style.display = 'block';
+                            this.querySelector('i').textContent = '▶';
+                        } else {
+                            content.style.display = 'none';
+                            this.querySelector('i').textContent = '▼';
+                        }
+                        content = content.nextElementSibling;
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
